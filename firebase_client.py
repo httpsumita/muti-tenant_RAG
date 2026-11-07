@@ -2,6 +2,21 @@ from __future__ import annotations
 
 import firebase_admin
 from firebase_admin import credentials, firestore
+import streamlit as st
+
+
+def _service_account_info():
+    try:
+        return st.secrets.get("firebase_service_account")
+    except (FileNotFoundError, KeyError):
+        return None
+
+
+def _admin_credential():
+    service_account = _service_account_info()
+    if service_account is not None:
+        return credentials.Certificate(dict(service_account))
+    return credentials.ApplicationDefault()
 
 
 def get_firestore_client(project_id: str):
@@ -12,7 +27,7 @@ def get_firestore_client(project_id: str):
         app = firebase_admin.get_app()
     except ValueError:
         app = firebase_admin.initialize_app(
-            credential=credentials.ApplicationDefault(),
+            credential=_admin_credential(),
             options={"projectId": project_id},
         )
 

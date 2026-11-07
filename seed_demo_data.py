@@ -15,12 +15,12 @@ from firebase_client import get_firestore_client
 from gemini_provider import GeminiProvider
 from ingestion import load_text_file
 from models import Document
-from provision_tenant import DEFAULT_SIGNUP_ROLE, provision_tenant_membership
 
 
 ROOT = Path(__file__).resolve().parent
 TENANT_A_ID = "tenant-a"
 TENANT_B_ID = "tenant-b"
+SEED_OWNER_ID = "public-demo-seed"
 PROFILE_DOCUMENT_ID = "DOC-TENA-RESUME-001"
 EDUCATION_DOCUMENT_ID = "DOC-TENB-EDU-001"
 LEGACY_POLICY_DOCUMENT_ID = "DOC-TENA-001"
@@ -53,14 +53,10 @@ def _queue_legacy_policy_deletes(db, batch) -> int:
 def seed_demo_data(
     db,
     *,
-    firebase_uid: str,
     embed_documents: Callable[[list[str]], tuple[tuple[float, ...], ...]],
     replace_legacy_policy: bool = False,
 ) -> tuple[int, int]:
     """Seed professional experience in tenant-a and education only in tenant-b."""
-    if not firebase_uid.strip():
-        raise ValueError("firebase_uid must be a non-empty string")
-
     profile_ref = db.collection("documents").document(PROFILE_DOCUMENT_ID)
     education_ref = db.collection("documents").document(EDUCATION_DOCUMENT_ID)
     created_at = datetime.now(timezone.utc)
@@ -70,16 +66,16 @@ def seed_demo_data(
         document_id=PROFILE_DOCUMENT_ID,
         tenant_id=TENANT_A_ID,
         title="Sumita Pathak · Professional Profile",
-        owner_id=firebase_uid,
-        allowed_roles={DEFAULT_SIGNUP_ROLE},
+        owner_id=SEED_OWNER_ID,
+        allowed_roles={"employee"},
         created_at=existing_profile.get("created_at") or created_at,
     )
     education_document = Document(
         document_id=EDUCATION_DOCUMENT_ID,
         tenant_id=TENANT_B_ID,
         title="Education and Recognition",
-        owner_id=firebase_uid,
-        allowed_roles={DEFAULT_SIGNUP_ROLE},
+        owner_id=SEED_OWNER_ID,
+        allowed_roles={"employee"},
         created_at=existing_education.get("created_at") or created_at,
     )
     profile_chunks = load_text_file(PROFILE_SOURCE, profile_document)
@@ -88,21 +84,6 @@ def seed_demo_data(
     vectors = embed_documents([chunk.text for chunk in all_chunks])
     if len(vectors) != len(all_chunks) or any(len(vector) != 768 for vector in vectors):
         raise ValueError("Gemini embeddings must match the chunk count and be 768-dimensional")
-
-    provision_tenant_membership(
-        db,
-        firebase_uid=firebase_uid,
-        tenant_id=TENANT_A_ID,
-        roles=[DEFAULT_SIGNUP_ROLE],
-        tenant_name="Tenant A - Resume Profile",
-    )
-    provision_tenant_membership(
-        db,
-        firebase_uid=firebase_uid,
-        tenant_id=TENANT_B_ID,
-        roles=[DEFAULT_SIGNUP_ROLE],
-        tenant_name="Tenant B - Empty Isolation Test",
-    )
 
     batch = db.batch()
     if replace_legacy_policy:
@@ -158,7 +139,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Seed Tenant A with professional experience and Tenant B with education details."
     )
-    parser.add_argument("--firebase-uid", required=True)
     parser.add_argument(
         "--replace-legacy-policy",
         action="store_true",
@@ -176,7 +156,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         profile_chunks, education_chunks = seed_demo_data(
             get_firestore_client(project_id),
-            firebase_uid=args.firebase_uid,
             embed_documents=GeminiProvider(api_key).embed_documents,
             replace_legacy_policy=args.replace_legacy_policy,
         )

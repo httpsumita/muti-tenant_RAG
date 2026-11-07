@@ -6,15 +6,19 @@
 - Trust boundaries: caller to API; API to database; ingestion pipeline to database; API to embedding/LLM providers; operators to logs and backups.
 - Assume requests, document text, and model output can be malicious or malformed. Never treat prompt instructions as authorization.
 
-## Non-negotiable invariants
+## Public demo access policy
 
-1. Every request has a verified principal and tenant context derived from trusted authentication—not caller-supplied tenant headers or request-body fields.
+This Streamlit deployment intentionally has no visitor authentication. The server assigns every visitor the same fixed principal: `public-demo-visitor`, tenant `tenant-a`, role `employee`. Therefore all Tenant A chunks allowed for `employee` are public to anyone who can reach the app. Tenant A must contain only content approved for public disclosure. Never put private or sensitive data in Tenant A. Tenant B and other tenants remain excluded by the retrieval filters.
+
+## Required invariants
+
+1. The visitor cannot choose or change the server-defined tenant or role.
 2. Every chunk is bound to exactly one tenant and has explicit access metadata. Missing or invalid access metadata means deny.
-3. Tenant and role/policy predicates are applied in the database retrieval operation before chunk text is returned to the application or sent to an LLM. A post-retrieval filter is not sufficient.
-4. Firestore Security Rules should restrict direct client access as defense in depth. Server code using Firebase Admin bypasses those rules, so it must perform explicit authorization and use narrowly scoped query functions.
-5. The LLM receives only authorized chunks. Retrieval failure or policy uncertainty fails closed.
-6. Audit records identify the principal, tenant, authorization/policy version, request/correlation ID, and the chunk/document IDs actually returned; keep sensitive query and content out of ordinary logs.
-7. Revocation and document deletion have defined semantics for stored chunks, caches, and subsequent retrievals.
+3. Tenant and role predicates are applied in the database retrieval operation before chunk text is returned to the application or sent to an LLM. A post-retrieval filter is not sufficient.
+4. Firestore Security Rules do not authorize the server's Firebase Admin requests; server code must enforce access explicitly and use narrowly scoped query functions.
+5. Gemini receives only relevant chunks authorized for the fixed public demo principal. Retrieval failure or policy uncertainty fails closed.
+6. Public visitors can consume the operator's Gemini quota. Keep provider keys server-side and monitor usage.
+7. Audit records should identify the public demo principal, tenant, policy version, request/correlation ID, and returned chunk/document IDs without logging sensitive query or document content.
 
 ## Retrieval implementation contract
 
@@ -22,11 +26,11 @@ The `chunks` collection stores `tenant_id`, `allowed_roles`, `embedding`, and ch
 
 ## Initial authorization shape
 
-Use tenant isolation plus role-based access as the first policy. A document/chunk is visible only when its tenant matches the authenticated tenant and its allowed-role set intersects the principal's effective roles (with an explicitly modeled owner/admin rule). Do not rely on role names or tenant IDs provided by the caller without server-side verification.
+Use tenant isolation plus role-based access. In this public demo, a document/chunk is visible only when its tenant is `tenant-a` and its allowed-role set includes `employee`. The server fixes these values; visitors cannot provide or change them.
 
-## Trusted membership lookup
+## Identity and membership tools
 
-The server resolves `memberships/{firebase_uid}` only after verifying the Firebase ID token. A membership record must contain `active: true`, a non-empty `tenant_id`, and a non-empty `roles` list. Missing, inactive, malformed, or role-less memberships are denied. Self-service tenant signup may create a new tenant and the current user's membership, but the server generates the tenant ID and assigns the fixed `tenant_admin` role; callers cannot select roles or attach themselves to an existing tenant. Trusted administrative provisioning, such as `provision_tenant.py`, can also create these records. Never accept tenant or role assignments for existing users from a login form.
+Firebase Authentication and membership provisioning code remains available for operator scripts and tests, but it is not used to authenticate visitors to the public Streamlit demo.
 
 ## Threats to test as the project grows
 
@@ -39,4 +43,4 @@ The server resolves `memberships/{firebase_uid}` only after verifying the Fireba
 
 ## Scope and caveats
 
-This is a learning design, not a compliance certification. Production use requires an organization-specific threat model, identity-provider integration, legal/privacy review, key and secret management, tested backup/restore, and independent security review.
+This is a public learning demo, not a private multi-tenant production deployment or compliance certification. Production use requires visitor authentication, an organization-specific threat model, legal/privacy review, key and secret management, tested backup/restore, rate limiting, and independent security review.

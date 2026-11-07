@@ -12,26 +12,9 @@ from google.api_core.exceptions import (
     PermissionDenied,
 )
 
-from firebase_auth import (
-    FirebaseAccountExistsError,
-    FirebaseAuthError,
-    InvalidFirebaseTokenError,
-    authenticate_with_password,
-    resolve_principal,
-    resolve_principals,
-    sign_in_with_password,
-    sign_up_with_password,
-    verify_identity_token,
-)
 from firebase_client import get_firestore_client
 from gemini_provider import GeminiProvider
 from models import Principal
-from provision_tenant import (
-    DEFAULT_SIGNUP_ROLE,
-    DEFAULT_SIGNUP_TENANT_ID,
-    TenantProvisioningError,
-    provision_tenant_membership,
-)
 from rag_service import answer_question
 
 
@@ -44,11 +27,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-
-# Do not present user-controlled tenant/role values as authenticated identity.
-def gemini_key_configured() -> bool:
-    return bool(gemini_api_key())
 
 
 def gemini_api_key() -> str | None:
@@ -124,199 +102,11 @@ def firebase_project_id() -> str | None:
         return None
 
 
-def firebase_web_api_key() -> str | None:
-    api_key = os.getenv("FIREBASE_WEB_API_KEY")
-    if api_key:
-        return api_key
-    try:
-        return st.secrets.get("FIREBASE_WEB_API_KEY")
-    except (FileNotFoundError, KeyError):
-        return None
-
-
-def render_authentication(project_id: str | None, api_key: str | None) -> Principal | None:
-    if not project_id or not api_key:
-        st.warning("Configure FIREBASE_PROJECT_ID and FIREBASE_WEB_API_KEY to sign in.")
-        return None
-
-    pending_signup = st.session_state.get("tenant_signup_pending")
-    if pending_signup:
-        st.info("Your account is ready. Finish joining Tenant A to continue.")
-        if st.button("Join Tenant A", key="finish-tenant-signup"):
-            try:
-                db = get_firestore_client(project_id)
-                identity = verify_identity_token(pending_signup["id_token"], project_id)
-                if identity.uid != pending_signup["uid"]:
-                    raise FirebaseAuthError("The Firebase account identity did not match signup.")
-                provision_tenant_membership(
-                    db,
-                    tenant_id=DEFAULT_SIGNUP_TENANT_ID,
-                    firebase_uid=identity.uid,
-                    roles=[DEFAULT_SIGNUP_ROLE],
-                )
-                st.session_state["firebase_id_token"] = pending_signup["id_token"]
-                st.session_state.pop("tenant_signup_pending", None)
-                st.rerun()
-            except FirebaseAuthError as exc:
-                st.error(str(exc))
-            except GoogleAPICallError:
-                st.error(
-                    "Firestore could not finish tenant setup. Create the database and grant "
-                    "the ADC account write access, then retry. No tenant access was granted."
-                )
-            except Exception:
-                logger.exception("Tenant signup provisioning failed")
-                st.error("Tenant setup failed. No access was granted; retry after fixing Firebase.")
-        return None
-
-    id_token = st.session_state.get("firebase_id_token")
-    if id_token:
-        try:
-            db = get_firestore_client(project_id)
-            principals = resolve_principals(id_token, project_id, db)
-        except InvalidFirebaseTokenError:
-            st.session_state.pop("firebase_id_token", None)
-            st.info("Your sign-in expired. Please sign in again.")
-            st.rerun()
-        except FirebaseAuthError as exc:
-            st.error(str(exc))
-            if st.button("Sign out", key="membership-sign-out"):
-                st.session_state.pop("firebase_id_token", None)
-                st.rerun()
-            return None
-        except Exception:
-            logger.exception("Firebase session verification failed")
-            st.error("Could not verify your session. Check Firebase configuration and try again.")
-            if st.button("Sign out", key="session-error-sign-out"):
-                st.session_state.pop("firebase_id_token", None)
-                st.rerun()
-            return None
-
-        principals_by_tenant = {principal.tenant_id: principal for principal in principals}
-        selected_tenant = st.selectbox(
-            "Tenant workspace",
-            options=tuple(principals_by_tenant),
-            key="active-tenant-selection",
-        )
-        principal = principals_by_tenant.get(selected_tenant)
-        if principal is None:
-            st.error("You do not have access to the selected tenant.")
-            return None
-
-        st.success("Signed in")
-        st.caption(f"Tenant: {principal.tenant_id}")
-        st.caption(f"Roles: {', '.join(sorted(principal.roles))}")
-        if st.button("Sign out", key="authenticated-sign-out"):
-            st.session_state.pop("firebase_id_token", None)
-            st.rerun()
-        return principal
-
-    account_mode = st.radio(
-        "Account",
-        ("Sign in", "Join Tenant A"),
-        horizontal=True,
-        key="account-mode",
-    )
-
-    if account_mode == "Join Tenant A":
-        with st.form("firebase-recruiter-sign-up"):
-            email = st.text_input("Email", autocomplete="email")
-            password = st.text_input("Password", type="password", autocomplete="new-password")
-            st.caption(
-                "New accounts automatically join Tenant A with employee access. HR-only "
-                "documents require an authorized HR role."
-            )
-            submitted = st.form_submit_button("Create account and join", use_container_width=True)
-
-        if submitted:
-            try:
-                db = get_firestore_client(project_id)
-                next(db.collections(), None)
-            except GoogleAPICallError:
-                st.error(
-                    "Firestore is not ready or the ADC account cannot access it. Create a "
-                    "Firestore database and grant the ADC account write access. No Auth account was created."
-                )
-                return None
-            except Exception:
-                logger.exception("Firestore signup preflight failed")
-                st.error("Could not check Firestore readiness. No Auth account was created.")
-                return None
-
-            try:
-                id_token, uid = sign_up_with_password(email, password, api_key)
-            except FirebaseAccountExistsError:
-                try:
-                    id_token = sign_in_with_password(email, password, api_key)
-                    uid = verify_identity_token(id_token, project_id).uid
-                except FirebaseAuthError as exc:
-                    st.error(str(exc))
-                    return None
-            except FirebaseAuthError as exc:
-                st.error(str(exc))
-                return None
-            except Exception:
-                logger.exception("Firebase tenant account creation failed")
-                st.error("Account creation failed. Check Firebase Authentication configuration.")
-                return None
-
-            st.session_state["tenant_signup_pending"] = {
-                "id_token": id_token,
-                "uid": uid,
-            }
-
-            try:
-                identity = verify_identity_token(id_token, project_id)
-                if identity.uid != uid:
-                    raise FirebaseAuthError("Firebase returned mismatched account identity data.")
-                provision_tenant_membership(
-                    db,
-                    tenant_id=DEFAULT_SIGNUP_TENANT_ID,
-                    firebase_uid=uid,
-                    roles=[DEFAULT_SIGNUP_ROLE],
-                )
-            except GoogleAPICallError:
-                st.error(
-                    "Your account was created, but Tenant A access could not be saved. "
-                    "Fix Firestore access and choose Join Tenant A to retry."
-                )
-                return None
-            except TenantProvisioningError as exc:
-                st.error(str(exc))
-                return None
-            except FirebaseAuthError as exc:
-                st.error(f"Your account was created, but tenant access could not be verified: {exc}")
-                return None
-            except Exception:
-                logger.exception("Tenant A signup membership creation failed")
-                st.error("Your account was created, but Tenant A access could not be saved. Retry setup.")
-                return None
-
-            st.session_state.pop("tenant_signup_pending", None)
-            st.session_state["firebase_id_token"] = id_token
-            st.rerun()
-        return None
-
-    with st.form("firebase-sign-in"):
-        email = st.text_input("Email", autocomplete="email")
-        password = st.text_input("Password", type="password", autocomplete="current-password")
-        submitted = st.form_submit_button("Sign in", use_container_width=True)
-
-    if submitted:
-        try:
-            db = get_firestore_client(project_id)
-            id_token, _principals = authenticate_with_password(
-                email, password, api_key, project_id, db
-            )
-        except FirebaseAuthError as exc:
-            st.error(str(exc))
-        except Exception:
-            logger.exception("Firebase sign-in flow failed")
-            st.error("Sign-in could not be completed. Check Firebase configuration and try again.")
-        else:
-            st.session_state["firebase_id_token"] = id_token
-            st.rerun()
-    return None
+PUBLIC_DEMO_PRINCIPAL = Principal(
+    user_id="public-demo-visitor",
+    tenant_id="tenant-a",
+    roles=frozenset({"employee"}),
+)
 
 
 st.markdown(
@@ -348,28 +138,34 @@ with st.sidebar:
     st.markdown("## Multi-Tenant Aware RAG")
     st.markdown("[by @httpsumita](https://github.com/httpsumita)")
     st.divider()
-    st.markdown("**How to experience-**")
-    st.markdown(
-        "🟢 Below - Join Tenant A"
-
-    )
+    st.markdown("Public demo · Tenant A · employee access")
     project_id = firebase_project_id()
     st.markdown("🟢 Ask away - Get info about me")
     st.markdown("🟢 Check if you getting the right data.")
-    principal = render_authentication(project_id, firebase_web_api_key())
+    if st.button("Open Tenant A chat", use_container_width=True):
+        st.session_state["public_demo_open"] = True
+        st.rerun()
+    if st.session_state.get("public_demo_open") and st.button(
+        "Back to overview", use_container_width=True
+    ):
+        st.session_state["public_demo_open"] = False
+        st.rerun()
     st.divider()
-    st.caption("Local learning build · tenant-scoped workspace")
+    st.caption("Anyone can use the public Tenant A demo.")
 
-if principal and project_id:
-    render_chat(principal, project_id)
+if st.session_state.get("public_demo_open"):
+    if project_id:
+        render_chat(PUBLIC_DEMO_PRINCIPAL, project_id)
+    else:
+        st.error("Configure FIREBASE_PROJECT_ID before enabling the public demo.")
     st.stop()
 else:
     st.markdown(
         """
         <section class="hero">
-            <div class="eyebrow">Recruiter workspace · Tenant A</div>
+            <div class="eyebrow">Public demo · Tenant A</div>
             <h1>Candidate knowledge, with access built in.</h1>
-            <p>Explore experience, skills, projects, and outcomes from approved profiles. New accounts start with employee access; HR-only information remains restricted.</p>
+            <p>Ask about the public demo profile's experience, skills, projects, and outcomes. No account is needed.</p>
         </section>
         """,
         unsafe_allow_html=True,
@@ -380,7 +176,7 @@ else:
     status_col, boundary_col, audit_col = st.columns(3)
     with status_col:
         st.markdown(
-            '<div class="card"><h3>🏢 Tenant A workspace</h3><div class="muted">Your account is assigned to Tenant A. Access starts at employee level; HR roles are granted separately.</div></div>',
+            '<div class="card"><h3>🏢 Tenant A workspace</h3><div class="muted">This public demo uses a fixed employee role and can search only Tenant A.</div></div>',
             unsafe_allow_html=True,
         )
     with boundary_col:
@@ -390,7 +186,7 @@ else:
         )
     with audit_col:
         st.markdown(
-            '<div class="card"><h3>🔒 Tenant boundary</h3><div class="muted">Education details belong to Tenant B and cannot be retrieved from a Tenant A session.</div></div>',
+            '<div class="card"><h3>🔒 Tenant boundary</h3><div class="muted">Education details belong to Tenant B and are excluded from this Tenant A demo.</div></div>',
             unsafe_allow_html=True,
         )
 
@@ -413,7 +209,8 @@ else:
             unsafe_allow_html=True,
         )
 
-    st.info(
-        "Sign in to ask questions about the data seeded into your selected tenant. "
-        "The resume is contact-redacted; its education section is available only in Tenant B."
+    st.warning(
+        "This app is public: anyone can query employee-accessible Tenant A content and use "
+        "the app owner's Gemini quota. Do not store sensitive or private data in Tenant A, "
+        "and do not enter personal information in chat. Select **Open Tenant A chat** to continue."
     )

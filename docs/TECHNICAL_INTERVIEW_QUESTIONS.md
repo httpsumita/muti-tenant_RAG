@@ -10,22 +10,15 @@ status as something to verify before describing it as tested.
   - **Answer:** Tenant-scoped document search; answers grounded in authorized content.
 - What does “permission-aware multi-tenant RAG” mean in this project?
   - **Answer:** Tenant and role filters before retrieval; authorized context only reaches generation.
-- Can you describe the complete flow from sign-in to a generated answer?
-  - **Answer:** Firebase Auth → verified identity → Firestore membership → query embedding → filtered vector search → ACL check → Gemini answer.
-  Firebase Auth: The user signs in and receives an identity token.
-Verified identity: The app verifies the token so it knows who signed in.
-Firestore membership: The app looks up which tenant and roles that user is allowed to access.
-Query embedding: The question is converted into numbers that represent its meaning, so it can be matched against document chunks.
-Filtered vector search: Firestore finds relevant chunks only within the selected tenant and the user’s allowed roles.
-ACL check: The app checks the returned chunks’ access metadata again before using them.
-Gemini answer: Only the question and authorized chunks are sent to Gemini, which generates the response. If no authorized chunks are found, Gemini is not called.
+- Can you describe the complete flow from opening chat to a generated answer?
+  - **Answer:** Visitor opens chat → server assigns fixed `tenant-a` / `employee` principal → query embedding → tenant/role-filtered vector search → ACL check → Gemini answer.
 
 - Which parts of the system are implemented, and which are still planned or unverified?
-  - **Answer:** Implemented: auth flow, seeder, filtered retrieval, unit tests. Verify live Firestore/Gemini; uploads and persistent audit writes are not implemented.
+  - **Answer:** Implemented: public demo, seeder, filtered retrieval, unit tests. Verify live Firestore/Gemini; uploads and persistent audit writes are not implemented.
 - Why is this more than a standard chatbot connected to a vector database?
-  - **Answer:** Server-verified identity; tenant/role-filtered vector query; fail-closed authorization checks.
+  - **Answer:** Server-fixed public principal; tenant/role-filtered vector query; fail-closed authorization checks.
 - What are the main trust boundaries in the system?
-  - **Answer:** Browser to app; app to Firebase/Firestore; app to Gemini; trusted metadata versus document text.
+  - **Answer:** Public browser to app; app to Firestore/Gemini; intentionally public Tenant A data versus excluded tenants.
 - What security properties should hold even if Gemini returns an unexpected answer?
   - **Answer:** Gemini only receives authorized chunks; model output does not grant access or change ACLs.
 - What converted the data intp vecptors before gemini
@@ -35,9 +28,9 @@ During seeding, seed_demo_data.py calls GeminiProvider.embed_documents() to embe
 ## Architecture and Components
 
 - Why did you choose Streamlit for the current interface?
-  - **Answer:** Fast Python prototype; simple chat and authentication UI.
+  - **Answer:** Fast Python prototype; simple public chat UI.
 - What responsibilities belong to Firebase Authentication, Firebase Admin, Firestore, and Gemini?
-  - **Answer:** Auth: identity; Admin: server-side verification/access; Firestore: membership and chunks; Gemini: embeddings and answer generation.
+  - **Answer:** Firebase Auth is not used by the public UI; Admin accesses Firestore; Firestore stores chunks; Gemini embeds and generates answers.
 - What is the difference between the Firebase Web API key and Application Default Credentials?
   - **Answer:** Web key: client Auth API identification; ADC: server identity for privileged Firebase/Firestore access.
 - Why does the server use Firebase Admin rather than giving the browser direct Firestore access?
@@ -56,33 +49,32 @@ Reads the sample profile and education files.
 Splits each file into smaller text chunks.
 Creates Gemini embeddings for those chunks.
 Stores the chunks, embeddings, tenant IDs, and role permissions in Firestore.
-Sets up the demo user’s tenant memberships.
-It’s a setup script—not something that runs for each chat question. Without seeded chunks, retrieval has nothing to find.
+It’s a setup script—not something that runs for each chat question. It does not create accounts or memberships. Without seeded chunks, retrieval has nothing to find.
 
 ## Tenants and Identity
 
-- How is a Firebase user mapped to a tenant and a set of roles?
-  - **Answer:** Verified Firebase UID → active Firestore membership → `Principal(tenant_id, roles)`.
+- How is a visitor mapped to a tenant and a set of roles?
+  - **Answer:** No visitor account; the server assigns a fixed `tenant-a` / `employee` principal.
 - Why does the application derive tenant membership from Firestore rather than a form field?
-  - **Answer:** Membership is trusted server-side data; form values are user-controlled.
+  - **Answer:** The public UI does not load memberships; tenant and role are fixed in server code, not user input.
 - What is stored under `memberships/{uid}/tenants/{tenant_id}`?
-  - **Answer:** Tenant membership data, including tenant ID, roles, and active status.
+  - **Answer:** Operator tooling stores tenant ID, roles, and active status; the public chat does not read it.
 - How does the tenant dropdown avoid listing tenants the user cannot access?
-  - **Answer:** Options come only from the user's resolved memberships.
+  - **Answer:** There is no tenant dropdown; public chat is limited to Tenant A.
 - What happens when a user belongs to multiple tenants?
-  - **Answer:** One verified principal per membership; user selects among their authorized tenants.
+  - **Answer:** The public demo does not sign in users or expose tenant selection.
 - How does new recruiter signup choose the tenant and role?
-  - **Answer:** Fixed policy: `tenant-a` and `employee`; user cannot choose either.
+  - **Answer:** Signup was removed; every visitor gets the fixed public demo principal.
 - Why does signup assign the `employee` role instead of letting users choose `hr` or `admin`?
-  - **Answer:** Least privilege; prevent self-assignment of elevated access.
+  - **Answer:** No signup occurs; public access is fixed to `employee`, so HR/admin chunks are excluded.
 - How would an administrator grant or revoke an HR role?
-  - **Answer:** Trusted admin workflow updates membership roles; audit and revalidate the change.
+  - **Answer:** HR membership administration is outside the public demo; the public principal never receives HR.
 - What happens if a membership is missing, inactive, malformed, or has no roles?
-  - **Answer:** Reject access; fail closed.
+  - **Answer:** Public chat does not use memberships; malformed chunk ACL metadata is rejected.
 - How would you prevent a user from attaching themselves to another tenant?
-  - **Answer:** Never accept tenant/role claims from forms; provision memberships only through trusted server operations.
+  - **Answer:** Tenant and role are fixed server-side; there is no user-selectable tenant field.
 - How would you handle an employee leaving the organization while their Firebase session is still active?
-  - **Answer:** Deactivate/remove membership; re-resolve membership on requests; revoke the Auth session as defense in depth.
+  - **Answer:** The public demo has no employee identity; remove or restrict content and disable the public demo if it should no longer be shared.
 
 ## Authorization and Tenant Isolation
 
@@ -220,9 +212,9 @@ It’s a setup script—not something that runs for each chat question. Without 
 - What should happen if the vector index is missing or still building?
   - **Answer:** Show a clear index-not-ready error; do not fall back to unfiltered search.
 - What should happen if Firebase Auth succeeds but membership creation fails?
-  - **Answer:** Keep signup pending; grant no tenant access; allow a safe retry.
+  - **Answer:** Not applicable to public chat; the operator provisioning tools handle memberships separately.
 - How does retry behavior avoid granting access before the membership is committed?
-  - **Answer:** Store pending signup state; set authenticated app session only after membership succeeds.
+  - **Answer:** Not applicable to public chat; visitor access uses a fixed server-side principal.
 - Which failures should be retried, and which should fail immediately?
   - **Answer:** Retry transient network/service errors; fail immediately on invalid input, identity, permissions, or malformed data.
 
@@ -241,7 +233,7 @@ It’s a setup script—not something that runs for each chat question. Without 
 - How would you support multiple document formats and OCR?
   - **Answer:** Add format-specific extractors/OCR before common normalization, chunking, and ingestion.
 - How would you add rate limits, email verification, and abuse protection for tenant signup?
-  - **Answer:** Auth email verification; per-user/IP quotas; abuse monitoring; server-side policy checks.
+  - **Answer:** Add per-IP/request quotas and abuse monitoring; this public demo currently has no rate limiting.
 - How would you ensure an administrator cannot accidentally expose one tenant's documents to another?
   - **Answer:** Tenant-scoped admin operations; immutable tenant ownership; audit trails; automated isolation tests.
 - What are the top three production-hardening tasks before real company data is allowed?
@@ -250,7 +242,7 @@ It’s a setup script—not something that runs for each chat question. Without 
 ## Be Ready to State the Current Status
 
 - Which seed command writes the resume to Firestore, and what credentials does it require?
-  - **Answer:** `seed_demo_data.py --firebase-uid <UID>`; Firebase project config, ADC, Gemini API key, and the account UID.
+  - **Answer:** `seed_demo_data.py --replace-legacy-policy`; Firebase project config, ADC, and Gemini API key; no user UID.
 - Has the seed command been run against the live project?
   - **Answer:** Verify with the operator/Firestore; local code cannot confirm live project state.
 - Has the live Firestore vector query been tested after the index became `READY`?
@@ -260,6 +252,6 @@ It’s a setup script—not something that runs for each chat question. Without 
 - Are retrieval audit events persisted to Firestore?
   - **Answer:** No; audit persistence is planned.
 - Does a browser refresh preserve sign-in in this Streamlit environment?
-  - **Answer:** Not reliably; authentication is currently in Streamlit session state.
+  - **Answer:** Not applicable; the public demo has no visitor sign-in.
 - Which tests are unit tests, and which checks have been performed against live services?
   - **Answer:** Unit tests use mocks/fakes; report live checks only after running them against the configured project.

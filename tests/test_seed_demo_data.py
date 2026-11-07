@@ -105,13 +105,11 @@ class FakeFirestore:
 
 
 class ResumeSeedTests(unittest.TestCase):
-    @patch("seed_demo_data.provision_tenant_membership")
-    def test_resume_chunks_are_written_only_to_tenant_a(self, provision_membership) -> None:
+    def test_resume_chunks_are_written_only_to_tenant_a(self) -> None:
         db = FakeFirestore()
 
         profile_chunk_count, education_chunk_count = seed_demo_data(
             db,
-            firebase_uid="synthetic-user",
             embed_documents=lambda texts: tuple((0.1,) * 768 for _ in texts),
         )
 
@@ -143,11 +141,9 @@ class ResumeSeedTests(unittest.TestCase):
             "maulana abul kalam azad",
             " ".join(chunk["text"].lower() for chunk in education_chunks),
         )
-        self.assertEqual(provision_membership.call_count, 2)
 
-    @patch("seed_demo_data.provision_tenant_membership")
     def test_legacy_policy_cleanup_never_deletes_another_tenants_data(
-        self, _provision_membership
+        self
     ) -> None:
         documents = {
             ("documents", LEGACY_POLICY_DOCUMENT_ID): {"tenant_id": TENANT_A_ID},
@@ -164,7 +160,6 @@ class ResumeSeedTests(unittest.TestCase):
 
         seed_demo_data(
             db,
-            firebase_uid="synthetic-user",
             embed_documents=lambda texts: tuple((0.1,) * 768 for _ in texts),
             replace_legacy_policy=True,
         )

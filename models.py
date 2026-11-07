@@ -43,7 +43,7 @@ def _immutable_ids(ids: tuple[str, ...], field_name: str) -> tuple[str, ...]:
 
 @dataclass(frozen=True, slots=True)
 class Principal:
-    """Verified application identity; construct only from trusted auth claims."""
+    """Application authorization context established by trusted server-side policy."""
 
     user_id: str
     tenant_id: str
