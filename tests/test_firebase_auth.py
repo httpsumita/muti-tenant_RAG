@@ -57,10 +57,33 @@ class FirebaseSignInTests(unittest.TestCase):
         )
 
     @patch("firebase_auth.requests.post")
-    def test_sign_in_rejects_bad_credentials_with_generic_error(self, post: Mock) -> None:
-        post.return_value = Mock(status_code=400)
+    def test_sign_in_maps_firebase_auth_errors_to_actionable_messages(self, post: Mock) -> None:
+        cases = (
+            ("INVALID_LOGIN_CREDENTIALS", "account exists in the configured Firebase project"),
+            ("USER_DISABLED", "account is disabled"),
+            ("OPERATION_NOT_ALLOWED", "Email/password sign-in is disabled"),
+            ("API_KEY_INVALID", "Web API key is invalid"),
+            ("TOO_MANY_ATTEMPTS_TRY_LATER", "temporarily blocked"),
+            ("UNKNOWN_ERROR", r"Firebase sign-in failed \(UNKNOWN_ERROR\)"),
+        )
+        for firebase_error, user_message in cases:
+            with self.subTest(firebase_error=firebase_error):
+                response = Mock(status_code=400)
+                response.json.return_value = {"error": {"message": firebase_error}}
+                post.return_value = response
 
-        with self.assertRaisesRegex(FirebaseAuthError, "Check your email and password"):
+                with self.assertRaisesRegex(FirebaseAuthError, user_message):
+                    sign_in_with_password(
+                        "user@example.test", "wrong-password", "web-api-key"
+                    )
+
+    @patch("firebase_auth.requests.post")
+    def test_sign_in_uses_safe_fallback_for_unparseable_error(self, post: Mock) -> None:
+        response = Mock(status_code=400)
+        response.json.side_effect = ValueError
+        post.return_value = response
+
+        with self.assertRaisesRegex(FirebaseAuthError, "Check the email and password"):
             sign_in_with_password("user@example.test", "wrong-password", "web-api-key")
 
     @patch("firebase_auth.requests.post", side_effect=requests.Timeout)

@@ -58,7 +58,35 @@ def sign_in_with_password_session(
         ) from exc
 
     if response.status_code >= 400:
-        raise FirebaseAuthError("Sign-in failed. Check your email and password.")
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        error = payload.get("error") if isinstance(payload, dict) else None
+        message = error.get("message", "") if isinstance(error, dict) else ""
+        code = message.split(":", 1)[0].strip()
+        if code in {"INVALID_LOGIN_CREDENTIALS", "EMAIL_NOT_FOUND", "INVALID_PASSWORD"}:
+            raise FirebaseAuthError(
+                "Firebase rejected these credentials. Check the email and password, and "
+                "confirm the account exists in the configured Firebase project."
+            )
+        if code == "USER_DISABLED":
+            raise FirebaseAuthError(
+                "This Firebase account is disabled. Re-enable it in Firebase Authentication."
+            )
+        if code == "OPERATION_NOT_ALLOWED":
+            raise FirebaseAuthError(
+                "Email/password sign-in is disabled. Enable it in Firebase Authentication settings."
+            )
+        if code == "API_KEY_INVALID":
+            raise FirebaseAuthError("The Firebase Web API key is invalid for this project.")
+        if code == "TOO_MANY_ATTEMPTS_TRY_LATER":
+            raise FirebaseAuthError(
+                "Firebase temporarily blocked sign-in attempts. Wait a while and try again."
+            )
+        if code:
+            raise FirebaseAuthError(f"Firebase sign-in failed ({code}). Check Firebase Auth settings.")
+        raise FirebaseAuthError("Firebase sign-in failed. Check the email and password.")
 
     try:
         payload = response.json()
