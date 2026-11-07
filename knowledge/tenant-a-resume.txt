@@ -1,0 +1,59 @@
+Professional Profile: Sumita Pathak
+Tenant: tenant-a
+Document ID: DOC-TENA-RESUME-001
+Allowed Roles: employee
+SUMITA PATHAK
+Email: httpsumita@gmail.com
+LinkedIn: www.linkedin.com/in/sumita-pathak
+Mobile: +91-90384 12297
+Github: https://github.com/httpsumita
+Professional Summary
+
+AI/ML Engineer focused on LLM applications, recruiting workflow automation, retrieval-augmented generation, evaluation pipelines, and speech AI. Experienced in building production-oriented tools with Python, Gemini, function calling, MCP, vector databases, and web application frameworks.
+
+Professional Experience
+
+Unstop — Associate AI Engineer | February 2026–Present
+
+- Built an LLM-powered assessment creation MCP using Python, Gemini, and function calling. The workflow generates end-to-end assessments using AI-generated and question-bank questions, reducing assessment creation time by more than 90%.
+- Developed AI evaluation pipelines processing more than 155,000 resumes, statements of purpose, and verbal assessments for multinational companies, automating candidate screening and reducing manual evaluation work.
+- Optimized verbal assessment pipelines using speech-to-text, text-to-speech, and LLM prompting, improving voice interaction quality and production reliability.
+
+Unstop — AIML Engineer Intern | October 2025–January 2026
+
+- Built an LLM-powered MCP tool for job listing creation, reducing manual effort by 93% through automatic population of 14 structured fields.
+- Performed end-to-end testing of AI features and identified more than 30 user-interface, technical, and workflow defects.
+- Collaborated with cross-functional teams to validate and deliver more than three AI-powered recruiter features, using prompt and workflow improvements to accelerate iteration.
+
+ZesFrame — Freelance Software Development Engineer | June 2024–July 2025
+
+- Built and deployed full-stack web applications for clients.
+- Built RAG chatbots with LLM APIs, vector databases, and embeddings to answer questions from custom knowledge bases. Reported 90% answer accuracy and 40% fewer support queries.
+- Improved deployment workflows with DNS, port forwarding, and SSL setup, supporting 99% uptime.
+
+Technical Skills
+
+- Languages: Python, C, Java, Solidity.
+- AI and LLMs: Gemini, Vertex AI, LLM agents, function calling, MCP, RAG, prompt engineering, NLP, speech AI (STT/TTS), OCR, OpenCV.
+- Frameworks: FastAPI, Django, Flask, Next.js, Tailwind CSS.
+- Data and APIs: MongoDB, REST APIs, vector databases, embeddings, Postman.
+- Cloud and DevOps: AWS, GCP, Docker, Git, GitHub Actions, Nginx, Linux.
+
+Selected Projects
+
+NutriScan — AI Nutrition Tool
+
+- Designed a Python, AWS, and FastAPI system that combines Gemini AI, web search, and Llama to analyze product descriptions and produce personalized nutrition guidance.
+- Improved recommendation accuracy by 60% across more than 20 product tests through prompt and model optimization.
+
+NeatNetAI — AI-Powered UI Enhancement Tool
+
+- Used OCR and structural similarity techniques to detect visual and textual changes between web versions.
+- Integrated LLMs into the analysis workflow to automate visual change detection and UI validation.
+
+Leadership and Volunteering
+
+- AIML Lead, Google Developer Group: guided more than 100 students starting with AI/ML.
+- Club Lead, Binary Coders: organized competitions supporting skill development for more than 1,000 students.
+
+Contact details and external profile links have been omitted from this search profile.

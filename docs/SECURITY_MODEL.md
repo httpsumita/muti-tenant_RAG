@@ -24,6 +24,10 @@ The `chunks` collection stores `tenant_id`, `allowed_roles`, `embedding`, and ch
 
 Use tenant isolation plus role-based access as the first policy. A document/chunk is visible only when its tenant matches the authenticated tenant and its allowed-role set intersects the principal's effective roles (with an explicitly modeled owner/admin rule). Do not rely on role names or tenant IDs provided by the caller without server-side verification.
 
+## Trusted membership lookup
+
+The server resolves `memberships/{firebase_uid}` only after verifying the Firebase ID token. A membership record must contain `active: true`, a non-empty `tenant_id`, and a non-empty `roles` list. Missing, inactive, malformed, or role-less memberships are denied. Self-service tenant signup may create a new tenant and the current user's membership, but the server generates the tenant ID and assigns the fixed `tenant_admin` role; callers cannot select roles or attach themselves to an existing tenant. Trusted administrative provisioning, such as `provision_tenant.py`, can also create these records. Never accept tenant or role assignments for existing users from a login form.
+
 ## Threats to test as the project grows
 
 - Cross-tenant IDOR and vector-search leakage.

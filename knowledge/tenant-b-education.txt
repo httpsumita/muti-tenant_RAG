@@ -1,0 +1,12 @@
+Education Profile
+Tenant: tenant-b
+Document ID: DOC-TENB-EDU-001
+Allowed Roles: employee
+
+Education and Recognition
+
+- B.Tech in Computer Science and Engineering (AI/ML), Maulana Abul Kalam Azad University of Technology; GPA 8.06, June 2026.
+- Coursework includes artificial intelligence, machine learning, networking, databases, operating systems, and data structures and algorithms.
+- Research publication: “Multimodal Web Design Automation: Structural Benchmarking and Content Generation with AI”; Best Paper Award, RAICCIT 2025.
+
+This education record is intentionally stored only in Tenant B for tenant-isolation testing. It must not be copied to Tenant A or returned to a Tenant A principal.

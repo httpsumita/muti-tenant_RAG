@@ -28,17 +28,45 @@ Tenant filtering and authorization are server-side requirements, not prompt inst
 2. Install dependencies with `pip install -r requirements.txt`.
 3. Start the interface with `streamlit run app.py`.
 
-The Streamlit UI does not yet wire login, uploads, or chat. The backend retrieval service is implemented and tested with synthetic Firestore/Gemini doubles; it is not yet a live end-to-end flow. Do not enter real company data.
+The Streamlit UI supports Firebase email/password sign-in, automatic Tenant A signup, tenant selection, and tenant-scoped chat. New accounts join `tenant-a` with the policy's least-privilege `employee` role; users cannot select a tenant ID or role. HR and admin access must be assigned through trusted administration. Chat uses the selected tenant's verified principal and permission-filtered Firestore retrieval before Gemini generation. Browser upload UI is not implemented; the resume/demo seed command below can populate Firestore. Authentication currently lives in Streamlit session state; browser reload may require signing in again because this machine blocks the PyArrow DLL required by Streamlit localStorage components. Do not enter real company data.
 
-For local Firebase Admin SDK setup, set `FIREBASE_PROJECT_ID` in `.streamlit/secrets.toml` and complete `gcloud auth application-default login`. The sidebar button only initializes the client; it does not read or write Firestore documents. Keep this scaffold local and do not deploy it publicly before authenticated identity is wired into the app.
+For local Firebase setup, set `FIREBASE_PROJECT_ID` and `FIREBASE_WEB_API_KEY` in the ignored root `.env` file or in valid TOML at `.streamlit/secrets.toml`. The app loads `.env` at startup. Enable Email/Password in Firebase Authentication, and complete `gcloud auth application-default login`. Provision active `memberships/{uid}` documents with `tenant_id` and non-empty `roles` for allowed users. Keep this scaffold local and do not use private data until retrieval and audit logging are connected.
 
-The prefiltered vector query requires the composite index in [firestore.indexes.json](firestore.indexes.json) to be deployed. Chunks must be stored in the `chunks` collection with `tenant_id`, `allowed_roles`, `embedding` (768 dimensions), `document_id`, `chunk_index`, and `text` fields. The retrieval API requires a `Principal` created from verified identity and trusted tenant/role data; never construct it from form fields.
+### Tenant A signup and operator provisioning
+
+For self-service signup, choose **Join Tenant A** in the sidebar and enter an email and password. Firestore is checked before Firebase Auth creates the account. The server automatically joins the user to `tenant-a` with the fixed `employee` role. If the tenant record does not exist yet, it is created as part of the same transaction as the membership. Users cannot choose a tenant ID or role. If membership setup fails after Auth signup, the session preserves a retry action and grants no tenant access until Firestore commits the membership.
+
+For local provisioning, the ADC account needs the `Cloud Datastore User` role (`roles/datastore.user`) on the development project.
+
+Operators can also bootstrap or recover a tenant using a Firebase Authentication UID and the command:
+
+```powershell
+.\.venv\Scripts\python.exe provision_tenant.py --tenant-id acme --name "Acme" --firebase-uid FIREBASE_AUTH_UID --role reader
+```
+
+Replace the sample tenant values and UID. The command atomically creates `tenants/{tenant_id}` and `memberships/{firebase_uid}` and refuses to overwrite either. It does not accept or store passwords.
+
+### Seed the resume and two tenants
+
+The fake `knowledge/policy.txt` has been removed. The contact-redacted professional profile is stored in `knowledge/tenant-a-resume.txt`; education details are stored separately in `knowledge/tenant-b-education.txt` and seeded only into `tenant-b`. Tenant A's resume source and chunks do not contain the education section.
+
+After rotating the exposed Gemini API key, create the embeddings and Firestore chunks with your Firebase Authentication UID:
+
+```powershell
+.\.venv\Scripts\python.exe seed_demo_data.py --firebase-uid YOUR_FIREBASE_UID --replace-legacy-policy
+```
+
+The command gives that UID employee membership in both tenants, embeds Tenant A's professional profile and Tenant B's education record, and writes chunk tenant/role metadata. The replacement flag removes only the known `DOC-TENA-001` fake policy metadata and chunks from `tenant-a`. It does not touch same-ID content in another tenant. The script makes live Firestore writes and Gemini embedding requests; unit tests use mocks and do not perform those writes.
+
+# gcloud.cmd auth application-default login
+
+The prefiltered vector query requires the composite index in [firestore.indexes.json](firestore.indexes.json). The Firebase CLI config is in [firebase.json](firebase.json); the configured project has the tenant-filtered vector index. If its status is `CREATING`, wait until it is `READY` before testing chat. Chunks must be stored in the `chunks` collection with `tenant_id`, `allowed_roles`, `embedding` (768 dimensions), `document_id`, `chunk_index`, and `text` fields. The retrieval API requires a `Principal` created from verified identity and trusted tenant/role data; never construct it from form fields.
 
 Run the unit tests with `.venv\Scripts\python.exe -m unittest discover -s tests -v` on Windows. The retrieval tests use fake Firestore and Gemini clients and do not require cloud access.
 
 ## Current status
 
-Steps 1–3 are documented; local chunking and auth-verification modules exist. Step 5's retrieval service and security tests are implemented, but app authentication, Firestore ingestion, and live Gemini generation are not wired end to end yet.
+Steps 1–5 have local implementations, including a two-tenant profile seeder. Tenant A contains professional experience; Tenant B contains education details, so the latter must not be returned to a Tenant A principal. The seed command has not yet written to Firestore. Browser upload UI, audit writes, and live end-to-end retrieval/Gemini still need validation.
 
 
 The key idea is:
