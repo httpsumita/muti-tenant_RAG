@@ -3,6 +3,7 @@
 Short, keyword-style answers for quick interview preparation. Treat live-service
 status as something to verify before describing it as tested.
 
+
 ## Project Overview
 
 - What problem does this application solve?
@@ -27,7 +28,10 @@ Gemini answer: Only the question and authorized chunks are sent to Gemini, which
   - **Answer:** Browser to app; app to Firebase/Firestore; app to Gemini; trusted metadata versus document text.
 - What security properties should hold even if Gemini returns an unexpected answer?
   - **Answer:** Gemini only receives authorized chunks; model output does not grant access or change ACLs.
+- What converted the data intp vecptors before gemini
+Gemini’s embedding model converts the text into vectors—specifically gemini-embedding-001.
 
+During seeding, seed_demo_data.py calls GeminiProvider.embed_documents() to embed document chunks.
 ## Architecture and Components
 
 - Why did you choose Streamlit for the current interface?
